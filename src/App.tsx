@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { posts as defaultPosts, Post } from './data/posts';
 
 const getInitialPosts = (): Post[] => {
@@ -363,7 +364,7 @@ export default function App() {
              </h1>
              <div className="text-[11px] text-[#808080] w-full border-b border-[#dddfe2] pb-2">
                  Female<br/>
-                 since 2026/4/24
+                 since 2026/4/23
              </div>
           </div>
 
@@ -435,18 +436,18 @@ export default function App() {
                  {!isPreviewMode ? (
                    <textarea 
                       placeholder="What's on your mind? (Supports Markdown)" 
-                      className="w-full border border-gray-300 p-1 text-[11px] outline-none min-h-[80px] focus:border-[#3b5998] border-t-0 mt-[-8px]"
+                      className="w-full border border-gray-300 p-2 text-[12px] outline-none min-h-[220px] focus:border-[#3b5998] border-t-0 mt-[-8px] font-sans resize-y leading-relaxed"
                       value={newContent}
                       onChange={e => setNewContent(e.target.value)}
                    />
                  ) : (
-                   <div className="w-full border border-gray-300 p-2 min-h-[80px] bg-white border-t-0 mt-[-8px] overflow-auto">
+                   <div className="w-full border border-gray-300 p-3 min-h-[220px] bg-white border-t-0 mt-[-8px] overflow-auto">
                      {newContent.trim() ? (
                        <div className="markdown-body prose prose-sm max-w-none text-[12px] leading-relaxed text-[#1c1e21]">
-                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{newContent}</ReactMarkdown>
+                         <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{newContent}</ReactMarkdown>
                        </div>
                      ) : (
-                       <span className="text-gray-400 italic">Nothing to preview</span>
+                       <span className="text-gray-400 italic text-[12px]">Nothing to preview</span>
                      )}
                    </div>
                  )}
@@ -563,7 +564,7 @@ export default function App() {
                 </div>
                 
                 <div className="markdown-body">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                     {selectedPost.content}
                   </ReactMarkdown>
                 </div>
