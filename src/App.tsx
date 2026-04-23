@@ -1,22 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { posts, Post } from './data/posts';
+import { posts as defaultPosts, Post } from './data/posts';
+
+const getInitialPosts = (): Post[] => {
+  const stored = localStorage.getItem('diary_posts_v2');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return defaultPosts;
+    }
+  }
+  return defaultPosts;
+};
 
 export default function App() {
+  const [allPosts, setAllPosts] = useState<Post[]>(getInitialPosts);
   const [currentView, setCurrentView] = useState<'list' | 'post'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Composer state
+  const [newTitle, setNewTitle] = useState('');
+  const [newContent, setNewContent] = useState('');
+  const [newTags, setNewTags] = useState('');
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+
   const [calendarView, setCalendarView] = useState<Date>(() => {
-    return posts.length > 0 ? new Date(posts[0].date) : new Date();
+    return allPosts.length > 0 ? new Date(allPosts[0].date) : new Date();
   });
 
   // Get unique tags from all posts
-  const allTags = Array.from(new Set(posts.flatMap(p => p.tags)));
+  const allTags = Array.from(new Set(allPosts.flatMap(p => p.tags)));
 
-  let filteredPosts = posts;
+  let filteredPosts = allPosts;
   if (selectedTag) {
     filteredPosts = filteredPosts.filter(p => p.tags.includes(selectedTag));
   }
@@ -101,7 +121,27 @@ export default function App() {
   const daysInMonth = new Date(calendarView.getFullYear(), calendarView.getMonth() + 1, 0).getDate();
   const startDay = new Date(calendarView.getFullYear(), calendarView.getMonth(), 1).getDay();
   const startDayMonAligned = (startDay + 6) % 7;
-  const postDates = new Set(posts.map(p => p.date));
+  const postDates = new Set(allPosts.map(p => p.date));
+
+  const handlePostSubmit = () => {
+    if (!newTitle.trim() || !newContent.trim()) return;
+    const now = new Date();
+    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const newPost: Post = {
+      id: 'local-post-' + Date.now(),
+      title: newTitle,
+      date: localDateStr,
+      tags: newTags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
+      content: newContent
+    };
+    const updatedPosts = [newPost, ...allPosts];
+    setAllPosts(updatedPosts);
+    localStorage.setItem('diary_posts_v2', JSON.stringify(updatedPosts));
+    setNewTitle('');
+    setNewContent('');
+    setNewTags('');
+    setIsPreviewMode(false);
+  };
 
   return (
     <div className="min-h-screen bg-[#e9eaed] font-['Tahoma',_sans-serif] text-[11px] flex flex-col">
@@ -237,6 +277,76 @@ export default function App() {
         {/* Content Area */}
         <main className="flex-1 flex flex-col gap-3 min-h-[500px]">
           
+          {currentView === 'list' && !selectedTag && !selectedDateFilter && !searchQuery.trim() && (
+            <div className="bg-white border border-[#dddfe2] shadow-sm">
+              <div className="bg-[#f6f7f9] px-2 py-1.5 border-b border-[#dddfe2] font-bold text-[#3b5998] flex gap-2">
+                <span className="flex items-center gap-1">✎ Update Status</span>
+                <span className="text-[#808080] font-normal">|</span>
+                <span className="flex items-center gap-1 opacity-70">📝 Add Essay</span>
+              </div>
+              <div className="p-2 flex flex-col gap-2">
+                 <input 
+                    type="text" 
+                    placeholder="Title..." 
+                    className="w-full border border-gray-300 p-1 text-[11px] outline-none focus:border-[#3b5998]"
+                    value={newTitle}
+                    onChange={e => setNewTitle(e.target.value)}
+                 />
+                 
+                 <div className="flex bg-[#f6f7f9] border border-gray-300 border-b-0 text-[10px] font-bold text-[#3b5998]">
+                    <span 
+                      className={`px-3 py-1 cursor-pointer border-r border-gray-300 hover:bg-[#eff1f3] ${!isPreviewMode ? 'bg-white text-black' : ''}`}
+                      onClick={() => setIsPreviewMode(false)}
+                    >
+                      Write
+                    </span>
+                    <span 
+                      className={`px-3 py-1 cursor-pointer border-r border-gray-300 hover:bg-[#eff1f3] ${isPreviewMode ? 'bg-white text-black' : ''}`}
+                      onClick={() => setIsPreviewMode(true)}
+                    >
+                      Preview
+                    </span>
+                 </div>
+                 
+                 {!isPreviewMode ? (
+                   <textarea 
+                      placeholder="What's on your mind? (Supports Markdown)" 
+                      className="w-full border border-gray-300 p-1 text-[11px] outline-none min-h-[80px] focus:border-[#3b5998] border-t-0 mt-[-8px]"
+                      value={newContent}
+                      onChange={e => setNewContent(e.target.value)}
+                   />
+                 ) : (
+                   <div className="w-full border border-gray-300 p-2 min-h-[80px] bg-white border-t-0 mt-[-8px] overflow-auto">
+                     {newContent.trim() ? (
+                       <div className="markdown-body prose prose-sm max-w-none text-[12px] leading-relaxed text-[#1c1e21]">
+                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{newContent}</ReactMarkdown>
+                       </div>
+                     ) : (
+                       <span className="text-gray-400 italic">Nothing to preview</span>
+                     )}
+                   </div>
+                 )}
+
+                 <input 
+                    type="text" 
+                    placeholder="Tags (comma separated)..." 
+                    className="w-full border border-gray-300 p-1 text-[11px] outline-none focus:border-[#3b5998]"
+                    value={newTags}
+                    onChange={e => setNewTags(e.target.value)}
+                 />
+                 <div className="flex justify-between items-center mt-1">
+                   <span className="text-[#808080] text-[10px]">HTML/Markdown rendering supported.</span>
+                   <button 
+                     className="bg-[#3b5998] text-white font-bold px-3 py-1 border border-[#29487d] hover:bg-[#4a6baf] active:bg-[#29487d] cursor-pointer"
+                     onClick={handlePostSubmit}
+                   >
+                     Post
+                   </button>
+                 </div>
+              </div>
+            </div>
+          )}
+
           {currentView === 'list' && (
             <div className="bg-white border border-[#dddfe2] shadow-sm">
                <div className="bg-[#f6f7f9] px-2 py-1.5 border-b border-[#dddfe2] flex justify-between font-bold text-[#4b4f56] items-center">
