@@ -29,6 +29,38 @@ export default function App() {
   const [newTags, setNewTags] = useState('');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
+  // Gist state
+  const [gistToken, setGistToken] = useState<string>(localStorage.getItem('github_gist_token') || '');
+  const [gistId, setGistId] = useState<string>(localStorage.getItem('github_gist_id') || '');
+  const [showSettings, setShowSettings] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>('');
+  const [formGistToken, setFormGistToken] = useState(gistToken);
+  const [formGistId, setFormGistId] = useState(gistId);
+
+  // Fetch initial posts from Gist if configured
+  useEffect(() => {
+    const fetchGist = async () => {
+      if (!gistId) return;
+      try {
+        setSyncStatus('Fetching from cloud...');
+        const res = await fetch(`https://api.github.com/gists/${gistId}`);
+        if (!res.ok) throw new Error('Network response was not ok');
+        const data = await res.json();
+        if (data.files && data.files['diary_posts.json']) {
+          const parsed = JSON.parse(data.files['diary_posts.json'].content);
+          setAllPosts(parsed);
+          localStorage.setItem('diary_posts_v2', JSON.stringify(parsed));
+        }
+        setSyncStatus('Synced');
+        setTimeout(() => setSyncStatus(''), 3000);
+      } catch (e) {
+        console.error(e);
+        setSyncStatus('Failed to sync. using local.');
+      }
+    };
+    fetchGist();
+  }, [gistId]);
+
   const [calendarView, setCalendarView] = useState<Date>(() => {
     return allPosts.length > 0 ? new Date(allPosts[0].date) : new Date();
   });
@@ -123,14 +155,16 @@ export default function App() {
   const startDayMonAligned = (startDay + 6) % 7;
   const postDates = new Set(allPosts.map(p => p.date));
 
-  const handlePostSubmit = () => {
+  const handlePostSubmit = async () => {
     if (!newTitle.trim() || !newContent.trim()) return;
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const exactTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
     const newPost: Post = {
       id: 'local-post-' + Date.now(),
       title: newTitle,
       date: localDateStr,
+      time: exactTimeStr,
       tags: newTags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
       content: newContent
     };
@@ -141,6 +175,76 @@ export default function App() {
     setNewContent('');
     setNewTags('');
     setIsPreviewMode(false);
+
+    if (gistToken && gistId) {
+      setSyncStatus('Saving to cloud...');
+      try {
+        const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${gistToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            files: {
+              'diary_posts.json': {
+                content: JSON.stringify(updatedPosts, null, 2)
+              }
+            }
+          })
+        });
+        if (!res.ok) throw new Error('Push failed');
+        setSyncStatus('Stored in cloud');
+        setTimeout(() => setSyncStatus(''), 3000);
+      } catch (e) {
+        console.error(e);
+        setSyncStatus('Cloud push failed!');
+      }
+    }
+  };
+
+  const handleCreateDatabase = async () => {
+    if (!formGistToken) {
+      alert("Please enter a token first");
+      return;
+    }
+    setSyncStatus('Generating remote DB...');
+    try {
+      const res = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${formGistToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: "YAWRON Space Blog Data",
+          public: false,
+          files: {
+            'diary_posts.json': {
+              content: JSON.stringify(allPosts)
+            }
+          }
+        })
+      });
+      if (!res.ok) throw new Error("Creation failed. Invalid Token?");
+      const data = await res.json();
+      if (data.id) {
+        setFormGistId(data.id);
+        setSyncStatus('');
+        alert(`Database created successfully!\nGist ID: ${data.id}\n(Click "Save Config" to apply)`);
+      }
+    } catch (e) {
+      alert('Failed to create Gist. Please check your token.');
+      setSyncStatus('');
+    }
+  };
+
+  const saveSettings = () => {
+    localStorage.setItem('github_gist_token', formGistToken);
+    localStorage.setItem('github_gist_id', formGistId);
+    setGistToken(formGistToken);
+    setGistId(formGistId);
+    setShowSettings(false);
   };
 
   return (
@@ -191,7 +295,12 @@ export default function App() {
         {/* Left Sidebar */}
         <aside className="w-full sm:w-[180px] shrink-0 flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-             <div className="bg-white border border-[#dddfe2] p-2 mb-2">
+             <div className="bg-white border border-[#dddfe2] p-2 mb-2 relative">
+                {syncStatus && (
+                  <div className="absolute top-[-18px] right-0 text-[10px] text-[#3b5998] font-bold opacity-80">
+                    {syncStatus}
+                  </div>
+                )}
                 <h3 className="text-[#9197a3] font-bold uppercase text-[10px] mb-2 px-1">Calendar</h3>
                 <div className="flex justify-between items-center mb-3 px-1 text-[#3b5998] font-bold select-none">
                   <span onClick={handlePrevMonth} className="hover:bg-[#eff1f3] px-1.5 cursor-pointer border border-[#bdc7d8] bg-[#f6f7f9] leading-tight">&lt;</span>
@@ -245,7 +354,13 @@ export default function App() {
                   })}
                 </div>
              </div>
-             <h1 className="text-[#3b5998] font-bold text-[13px] hover:underline cursor-pointer inline mt-1">YAWRON Space</h1>
+             <h1 
+               className="text-[#3b5998] font-bold text-[13px] hover:underline cursor-pointer inline mt-1"
+               onClick={() => setShowSettings(true)}
+               title={gistId && gistToken ? "Cloud DB Active (Click to config)" : "Setup Cloud DB"}
+             >
+               YAWRON Space {gistId && gistToken ? '☁️' : ''}
+             </h1>
              <div className="text-[11px] text-[#808080] w-full border-b border-[#dddfe2] pb-2">
                  Female<br/>
                  since 2026/4/24
@@ -278,7 +393,16 @@ export default function App() {
         <main className="flex-1 flex flex-col gap-3 min-h-[500px]">
           
           {currentView === 'list' && !selectedTag && !selectedDateFilter && !searchQuery.trim() && (
-            <div className="bg-white border border-[#dddfe2] shadow-sm">
+            <div className="bg-white border border-[#dddfe2] shadow-sm relative">
+              {gistId && gistToken ? (
+                <div className="absolute top-2 right-2 text-[10px] text-[#29487d] font-bold flex items-center gap-1 opacity-80 cursor-help" title="Configured to save to GitHub Gist cloud.">
+                  ☁️ Cloud Mode
+                </div>
+              ) : (
+                <div className="absolute top-2 right-2 text-[10px] text-[#808080] font-bold flex items-center gap-1 opacity-80 cursor-help" title="You are only saving to this browser. Click 'Setup Cloud DB' on the left to sync.">
+                  💾 Local Mode
+                </div>
+              )}
               <div className="bg-[#f6f7f9] px-2 py-1.5 border-b border-[#dddfe2] font-bold text-[#3b5998] flex gap-2">
                 <span className="flex items-center gap-1">✎ Update Status</span>
                 <span className="text-[#808080] font-normal">|</span>
@@ -385,7 +509,7 @@ export default function App() {
                         >
                            {post.title}
                         </div>
-                        <div className="text-gray-400 text-[10px]">{post.date} · Tags: {post.tags.join(', ')}</div>
+                        <div className="text-gray-400 text-[10px]">{post.date}{post.time ? ` ${post.time}` : ''} · Tags: {post.tags.join(', ')}</div>
                       </div>
                     </div>
                     {/* Snippet preview rendering */}
@@ -422,7 +546,7 @@ export default function App() {
                       {selectedPost.title}
                     </h1>
                     <div className="text-gray-400 text-[10px] flex items-center flex-wrap gap-1 mt-0.5">
-                      <span>Posted by User on {selectedPost.date} · Tags:</span>
+                      <span>Posted by User on {selectedPost.date}{selectedPost.time ? ` ${selectedPost.time}` : ''} · Tags:</span>
                       {selectedPost.tags.map((tag, idx) => (
                         <span key={tag}>
                           <span 
@@ -452,8 +576,80 @@ export default function App() {
       
       {/* Footer */}
       <footer className="w-full mt-auto mb-4 px-4 text-[#9197a3] text-[10px] leading-tight text-center max-w-[1024px] mx-auto">
-        Privacy · Terms · Advertising · Ad Choices · Cookies · More · MyDiaryBox © {new Date().getFullYear()}
+        Privacy · Terms · Advertising · Ad Choices · Cookies · More · YAWRON Space © {new Date().getFullYear()}
       </footer>
+
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-[#29487d] w-full max-w-md shadow-xl text-black">
+            <div className="bg-[#3b5998] text-white px-3 py-2 font-bold flex justify-between">
+              <span>Cloud Database Config</span>
+              <span className="cursor-pointer" onClick={() => setShowSettings(false)}>✕</span>
+            </div>
+            <div className="p-4 flex flex-col gap-4 text-[12px]">
+               <div className="bg-[#fff9d7] border border-[#e2c822] p-2 text-[#333]">
+                 <strong>Warning:</strong> This uses GitHub Gist to sync your diary across devices. Your token is stored locally in this browser.
+               </div>
+               
+               <div>
+                 <label className="font-bold text-[#3b5998] block mb-1">GitHub Personal Access Token</label>
+                 <input 
+                   type="password" 
+                   value={formGistToken}
+                   onChange={e => setFormGistToken(e.target.value)}
+                   placeholder="ghp_xxx..."
+                   className="w-full border border-gray-300 px-2 py-1 outline-none focus:border-[#3b5998]"
+                 />
+                 <span className="text-[10px] text-gray-400">Needs "gist" scope. Never share this token.</span>
+               </div>
+               
+               <div className="border-t border-gray-200 mt-2 pt-4">
+                 <label className="font-bold text-[#3b5998] block mb-1">Target Gist ID (Optional if new)</label>
+                 <div className="flex gap-2">
+                   <input 
+                     type="text" 
+                     value={formGistId}
+                     onChange={e => setFormGistId(e.target.value)}
+                     placeholder="Empty to create new..."
+                     className="w-full border border-gray-300 px-2 py-1 outline-none focus:border-[#3b5998]"
+                   />
+                   <button 
+                     className="bg-gray-200 border border-gray-300 px-2 font-bold hover:bg-gray-300 whitespace-nowrap"
+                     onClick={handleCreateDatabase}
+                   >
+                     Initialize New
+                   </button>
+                 </div>
+                 <span className="text-[10px] text-gray-400">Paste your existing Gist ID here to sync from another device, or initialize a new cloud database.</span>
+               </div>
+
+               <div className="flex justify-end gap-2 mt-4">
+                  <button 
+                    className="border border-gray-300 px-4 py-1 hover:bg-gray-100"
+                    onClick={() => {
+                       localStorage.removeItem('github_gist_token');
+                       localStorage.removeItem('github_gist_id');
+                       setGistToken('');
+                       setGistId('');
+                       setFormGistToken('');
+                       setFormGistId('');
+                       alert("Cloud sync disabled and tokens removed from this browser.");
+                       setShowSettings(false);
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                  <button 
+                    className="bg-[#3b5998] text-white font-bold border border-[#29487d] px-4 py-1 hover:bg-[#4a6baf]"
+                    onClick={saveSettings}
+                  >
+                    Save Config
+                  </button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
