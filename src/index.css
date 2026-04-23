@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+body {
+  font-family: "lucida grande", tahoma, verdana, arial, sans-serif;
+  background-color: #ffffff;
+  color: #333333;
+}
+
+/* Base style overrides for retro markdown rendering */
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.markdown-body h1 {
+  font-size: 18px;
+  color: #3b5998;
+  border-bottom: 1px solid #d8dfea;
+  padding-bottom: 5px;
+  margin-bottom: 15px;
+  margin-top: 15px;
+  font-weight: bold;
+}
+.markdown-body h2 { 
+  font-size: 15px; 
+  color: #333333;
+  margin-top: 15px;
+  margin-bottom: 10px; 
+  font-weight: bold;
+}
+.markdown-body h3 {
+  font-size: 13px; 
+  color: #333333;
+  font-weight: bold;
+}
+.markdown-body p { 
+  margin-bottom: 10px; 
+}
+.markdown-body ul { 
+  list-style-type: square; 
+  margin-left: 20px; 
+  margin-bottom: 10px; 
+}
+.markdown-body li {
+  margin-bottom: 4px;
+}
+.markdown-body a { 
+  color: #3b5998; 
+  text-decoration: none; 
+}
+.markdown-body a:hover { 
+  text-decoration: underline; 
+  background-color: #3b5998; 
+  color: white; 
+}
+.markdown-body pre {
+  background-color: #f7f7f7;
+  border: 1px solid #cccccc;
+  padding: 10px;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  margin-bottom: 15px;
+}
+.markdown-body code {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+  background-color: #f7f7f7;
+  padding: 1px 3px;
+}
+.markdown-body blockquote {
+  border-left: 3px solid #3b5998;
+  padding-left: 10px;
+  color: #808080;
+  margin-left: 0;
+  margin-bottom: 15px;
+}
