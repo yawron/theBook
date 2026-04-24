@@ -4,6 +4,14 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { posts as defaultPosts, Post } from './data/posts';
 
+interface Todo {
+  id: string;
+  text: string;
+  done: boolean;
+  pinned?: boolean;
+  date?: string;
+}
+
 const getInitialPosts = (): Post[] => {
   const stored = localStorage.getItem('diary_posts_v2');
   if (stored) {
@@ -37,6 +45,62 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<string>('');
   const [formGistToken, setFormGistToken] = useState(gistToken);
   const [formGistId, setFormGistId] = useState(gistId);
+
+  // Todos state
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    const stored = localStorage.getItem('diary_todos_v1');
+    if (stored) {
+      try { return JSON.parse(stored); } catch (e) { return []; }
+    }
+    return [];
+  });
+  const [newTodo, setNewTodo] = useState('');
+  const [newTodoDate, setNewTodoDate] = useState('');
+  const [hideCompleted, setHideCompleted] = useState(() => {
+    return localStorage.getItem('diary_todos_hideCompleted') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('diary_todos_v1', JSON.stringify(todos));
+  }, [todos]);
+
+  useEffect(() => {
+    localStorage.setItem('diary_todos_hideCompleted', hideCompleted.toString());
+  }, [hideCompleted]);
+
+  const handleAddTodo = (e?: React.KeyboardEvent) => {
+    if (e && e.key !== 'Enter') return;
+    if (!newTodo.trim()) return;
+    setTodos([...todos, { 
+      id: Date.now().toString(), 
+      text: newTodo.trim(), 
+      done: false, 
+      pinned: false,
+      date: newTodoDate || selectedDateFilter || ''
+    }]);
+    setNewTodo('');
+  };
+
+  const toggleTodo = (id: string) => {
+    setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  };
+
+  const deleteTodo = (id: string) => {
+    setTodos(todos.filter(t => t.id !== id));
+  };
+
+  const togglePinTodo = (id: string) => {
+    setTodos(todos.map(t => t.id === id ? { ...t, pinned: !t.pinned } : t));
+  };
+
+  const visibleTodos = todos
+    .filter(t => !hideCompleted || !t.done)
+    .filter(t => !selectedDateFilter || t.date === selectedDateFilter)
+    .sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return 0; // maintain original order otherwise
+    });
 
   // Fetch initial posts from Gist if configured
   useEffect(() => {
@@ -155,6 +219,7 @@ export default function App() {
   const startDay = new Date(calendarView.getFullYear(), calendarView.getMonth(), 1).getDay();
   const startDayMonAligned = (startDay + 6) % 7;
   const postDates = new Set(allPosts.map(p => p.date));
+  const todoDates = new Set(todos.filter(t => !t.done && t.date).map(t => t.date));
 
   const handlePostSubmit = async () => {
     if (!newTitle.trim() || !newContent.trim()) return;
@@ -336,9 +401,10 @@ export default function App() {
                     const day = i + 1;
                     const dateStr = `${calendarView.getFullYear()}-${String(calendarView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const hasPost = postDates.has(dateStr);
+                    const hasTodo = todoDates.has(dateStr);
                     const isSelected = selectedDateFilter === dateStr;
 
-                    let className = "cursor-pointer p-[2px] border border-transparent ";
+                    let className = "cursor-pointer p-[2px] border border-transparent relative ";
                     if (isSelected) {
                       className += "bg-[#3b5998] text-white font-bold border-[#29487d]";
                     } else if (hasPost) {
@@ -349,7 +415,10 @@ export default function App() {
 
                     return (
                       <div key={day} className={className} onClick={() => toggleDateFilter(dateStr)}>
-                        {day}
+                        <span className="relative z-10">{day}</span>
+                        {hasTodo && (
+                          <div className={`absolute bottom-[2px] left-1/2 -translate-x-1/2 w-[3px] h-[3px] rounded-full ${isSelected ? 'bg-white' : 'bg-[#e74c3c]'}`} />
+                        )}
                       </div>
                     );
                   })}
@@ -573,6 +642,86 @@ export default function App() {
             </div>
           )}
         </main>
+
+        {/* Right Sidebar - Todos */}
+        <aside className="w-full md:w-[220px] shrink-0 flex flex-col gap-4 pt-0">
+          <div className="bg-white border border-[#dddfe2] shadow-sm">
+            <div className="bg-[#f6f7f9] px-2 py-1.5 border-b border-[#dddfe2] font-bold text-[#4b4f56] text-[11px] box-border flex justify-between items-center">
+              <span>☑ TODO BOX</span>
+              <span 
+                className="font-normal text-[10px] text-gray-500 cursor-pointer hover:underline"
+                onClick={() => setHideCompleted(!hideCompleted)}
+              >
+                {hideCompleted ? 'Show Done' : 'Hide Done'}
+              </span>
+            </div>
+            <div className="p-2 flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <input 
+                  type="text" 
+                  placeholder="Add a task..." 
+                  className="w-full border border-gray-300 p-1 pl-2 text-[11px] outline-none focus:border-[#3b5998]"
+                  value={newTodo}
+                  onChange={e => setNewTodo(e.target.value)}
+                  onKeyDown={handleAddTodo}
+                />
+                <div className="flex gap-1">
+                  <input
+                    type="date"
+                    className="flex-1 border border-gray-300 p-1 text-[11px] outline-none focus:border-[#3b5998] text-gray-600"
+                    value={newTodoDate}
+                    onChange={e => setNewTodoDate(e.target.value)}
+                  />
+                  <button 
+                    className="bg-[#3b5998] text-white px-3 py-1 text-[10px] font-bold border border-[#29487d] hover:bg-[#365899] cursor-pointer shrink-0"
+                    onClick={() => handleAddTodo()}
+                  >
+                    Add Task
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 mt-1 max-h-[300px] overflow-y-auto">
+                {visibleTodos.length === 0 ? (
+                  <div className="text-gray-400 italic text-[10px] text-center py-4">No tasks to display.</div>
+                ) : (
+                  visibleTodos.map(todo => (
+                    <div key={todo.id} className={`flex justify-between items-start group break-words text-[11px] hover:bg-gray-50 p-1 px-1.5 leading-tight rounded border-l-2 ${todo.pinned ? 'border-[#3b5998] bg-[#f0f4f8]' : 'border-transparent'}`}>
+                      <label className="flex gap-2 items-start cursor-pointer flex-1 min-w-0 pr-1">
+                        <input 
+                          type="checkbox" 
+                          checked={todo.done}
+                          onChange={() => toggleTodo(todo.id)}
+                          className="mt-[2px] cursor-pointer shrink-0"
+                        />
+                        <span className={`flex flex-col break-words max-w-full leading-snug ${todo.done ? 'line-through text-gray-400' : 'text-[#1c1e21]'} ${todo.pinned ? 'font-medium' : ''}`}>
+                          <span>{todo.text}</span>
+                          {todo.date && <span className="text-[9px] text-[#9197a3] font-normal leading-none mt-0.5">{todo.date}</span>}
+                        </span>
+                      </label>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button 
+                          className={`hover:text-[#3b5998] font-bold px-1 bg-transparent border-0 cursor-pointer text-[12px] ${todo.pinned ? 'text-[#3b5998]' : 'text-gray-300'}`}
+                          title={todo.pinned ? "Unpin" : "Pin to top"}
+                          onClick={() => togglePinTodo(todo.id)}
+                        >
+                          {todo.pinned ? '▲' : '△'}
+                        </button>
+                        <button 
+                          className="text-gray-300 hover:text-red-500 font-bold px-1 bg-transparent border-0 cursor-pointer"
+                          title="Delete task"
+                          onClick={() => deleteTodo(todo.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+
       </div>
       
       {/* Footer */}
